@@ -31,7 +31,7 @@ func New(configFile *koanf.Koanf) *Pipeline {
 }
 
 func (p *Pipeline) Register(id ccsds_tools.LayerType) {
-	var layer *ccsds_tools.Layer[any]
+	var layer ccsds_tools.Layer[any]
 	switch id {
 	case ccsds_tools.PhysicalLayer:
 		input := make(chan []complex64, p.BufferSize)
