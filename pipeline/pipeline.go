@@ -5,58 +5,58 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/jrwynneiii/ccsds_tools"
-	"github.com/jrwynneiii/goestuner/config"
+	"github.com/jrwynneiii/ccsds_tools/types"
 	"github.com/knadh/koanf/v2"
 )
 
 type Pipeline struct {
-	Layers              []*ccsds_tools.Layer
+	Layers              []*ccsds_tools.Layer[any]
 	SampleRate          float32
 	BufferSize          uint
 	ConfigFile          *koanf.Koanf
 	NumLayersRegistered int
 }
 
-func New(configFile *koanf.koanf) *Pipeline {
+func New(configFile *koanf.Koanf) *Pipeline {
 	srate := configFile.Float64("radio.sample_rate")
 	bufsize := uint(configFile.Int("xrit.chunk_size"))
 	return &Pipeline{
 		SampleRate: srate,
 		BufferSize: bufsize,
 		ConfigFile: configFile,
-		Layers:     make([]*ccsds_tools.Layer, 6),
+		Layers:     make([]*ccsds_tools.Layer[any], 6),
 	}
 }
 
 func (p *Pipeline) Register(id ccsds_tools.LayerType) {
-	var layer *ccsds_tools.Layer
+	var layer *ccsds_tools.Layer[any]
 	switch id {
 	case ccsds_tools.PhysicalLayer:
 		input := make(chan []complex64, p.BufferSize)
 		output := make(chan byte, p.BufferSize)
 
-		xritConf := config.XRITConf{
-			SymbolRate:             configFile.Float64("xrit.symbol_rate"),
-			RRCAlpha:               configFile.Float64("xrit.rrc_alpha"),
-			RRCTaps:                configFile.Int("xrit.rrc_taps"),
-			LowPassTransitionWidth: configFile.Float64("xrit.lowpass_transition_width"),
-			PLLAlpha:               float32(configFile.Float64("xrit.pll_alpha")),
-			Decimation:             configFile.Int("xrit.decimation_factor"),
-			ChunkSize:              uint(configFile.Int("xrit.chunk_size")),
-			DoFFT:                  configFile.Bool("xrit.do_fft"),
+		xritConf := types.XRITConf{
+			SymbolRate:             p.configFile.Float64("xrit.symbol_rate"),
+			RRCAlpha:               p.configFile.Float64("xrit.rrc_alpha"),
+			RRCTaps:                p.configFile.Int("xrit.rrc_taps"),
+			LowPassTransitionWidth: p.configFile.Float64("xrit.lowpass_transition_width"),
+			PLLAlpha:               float32(p.configFile.Float64("xrit.pll_alpha")),
+			Decimation:             p.configFile.Int("xrit.decimation_factor"),
+			ChunkSize:              uint(p.configFile.Int("xrit.chunk_size")),
+			DoFFT:                  p.configFile.Bool("xrit.do_fft"),
 		}
 
-		agcConf := config.AGCConf{
-			Rate:      float32(configFile.Float64("agc.rate")),
-			Reference: float32(configFile.Float64("agc.reference")),
-			Gain:      float32(configFile.Float64("agc.gain")),
-			MaxGain:   float32(configFile.Float64("agc.max_gain")),
+		agcConf := types.AGCConf{
+			Rate:      float32(p.configFile.Float64("agc.rate")),
+			Reference: float32(p.configFile.Float64("agc.reference")),
+			Gain:      float32(p.configFile.Float64("agc.gain")),
+			MaxGain:   float32(p.configFile.Float64("agc.max_gain")),
 		}
 
-		clockConf := config.ClockRecoveryConf{
-			Mu:         float32(configFile.Float64("clockrecovery.mu")),
-			Alpha:      float32(configFile.Float64("clockrecovery.alpha")),
-			OmegaLimit: float32(configFile.Float64("clockrecovery.omega_limit")),
+		clockConf := types.ClockRecoveryConf{
+			Mu:         float32(p.configFile.Float64("clockrecovery.mu")),
+			Alpha:      float32(p.configFile.Float64("clockrecovery.alpha")),
+			OmegaLimit: float32(p.configFile.Float64("clockrecovery.omega_limit")),
 		}
 
 		layer = layers.physical.New(p.SampleRate, p.BufferSize, xritConf, agcConf, clockConf, &input, &output)
@@ -65,12 +65,12 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 	case ccsds_tools.DataLinkLayer:
 		output := make(chan byte, p.BufferSize)
 
-		vitConf := config.ViterbiConf{
-			MaxErrors: configFile.Int("viterbi.max_errors"),
+		vitConf := types.ViterbiConf{
+			MaxErrors: p.configFile.Int("viterbi.max_errors"),
 		}
-		xritConf := config.XRITFrameConf{
-			FrameSize:     configFile.Int("xritframe.frame_size"),
-			LastFrameSize: configFile.Int("xritframe.last_frame_size"),
+		xritConf := types.XRITFrameConf{
+			FrameSize:     p.configFile.Int("xritframe.frame_size"),
+			LastFrameSize: p.configFile.Int("xritframe.last_frame_size"),
 		}
 
 		layer = layers.datalink.New(p.BufferSize, vitConf, xritConf, p.Layers[id-1].GetOutput(), &output)
