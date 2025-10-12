@@ -13,7 +13,7 @@ type Pipeline struct {
 	Layers              []*ccsds_tools.Layer[any]
 	SampleRate          float32
 	BufferSize          uint
-	ConfigFile          *koanf.Koanf
+	configFile          *koanf.Koanf
 	NumLayersRegistered int
 }
 
@@ -21,10 +21,10 @@ func New(configFile *koanf.Koanf) *Pipeline {
 	srate := configFile.Float64("radio.sample_rate")
 	bufsize := uint(configFile.Int("xrit.chunk_size"))
 	return &Pipeline{
-		SampleRate: srate,
+		SampleRate: float32(srate),
 		BufferSize: bufsize,
-		ConfigFile: configFile,
 		Layers:     make([]*ccsds_tools.Layer[any], 6),
+		configFile: configFile,
 	}
 }
 
