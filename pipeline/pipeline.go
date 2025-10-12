@@ -64,7 +64,7 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.DataLinkLayer:
-		output := make(chan byte, p.BufferSize)
+		output := make(chan []byte, p.BufferSize)
 
 		vitConf := types.ViterbiConf{
 			MaxErrors: p.configFile.Int("viterbi.max_errors"),
