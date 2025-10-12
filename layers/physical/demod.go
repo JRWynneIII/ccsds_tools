@@ -23,7 +23,7 @@ type SNRCalc struct {
 }
 
 type Demodulator struct {
-	SampleInput       chan []complex64
+	SampleInput       *chan []complex64
 	SymbolsOutput     *chan byte
 	bufferSize        uint
 	circuitSampleRate float32
@@ -62,7 +62,7 @@ func NewSNRCalc() *SNRCalc {
 }
 
 // TODO: Move all of these from types to just arguments to the funtion; only have the Pipeline{} access the config file or its objects basically
-func New(srate float32, bufsize uint, xritConf types.XRITConf, agcConf types.AGCConf, clockConf types.ClockConf, demodInput *chan []complex64, demodOutput *chan byte) *Demodulator {
+func New(srate float32, bufsize uint, xritConf types.XRITConf, agcConf types.AGCConf, clockConf types.ClockRecoveryConf, demodInput *chan []complex64, demodOutput *chan byte) *Demodulator {
 	d := Demodulator{
 		SampleInput:       demodInput,
 		SymbolsOutput:     demodOutput,
@@ -188,7 +188,7 @@ func (d *Demodulator) doFFT(samples []complex64) {
 func (d *Demodulator) Start() {
 	for {
 		select {
-		case samples := <-d.SampleInput:
+		case samples := <-*d.SampleInput:
 			d.demodBlock(samples)
 		default:
 			time.Sleep(time.Millisecond)
