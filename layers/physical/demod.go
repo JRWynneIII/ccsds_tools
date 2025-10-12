@@ -86,11 +86,11 @@ func New(srate float32, bufsize uint, xritConf types.XRITConf, agcConf types.AGC
 	return &d
 }
 
-func (d *Demodulator) GetOutput() *chan byte {
+func (d *Demodulator) GetOutput() *any {
 	return d.SymbolsOutput
 }
 
-func (d *Demodulator) GetInput() *chan []complex64 {
+func (d *Demodulator) GetInput() *any {
 	return d.SampleInput
 }
 

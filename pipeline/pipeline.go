@@ -12,7 +12,7 @@ import (
 )
 
 type Pipeline struct {
-	Layers              []ccsds_tools.Layer[any]
+	Layers              []ccsds_tools.Layer
 	SampleRate          float32
 	BufferSize          uint
 	configFile          *koanf.Koanf
@@ -25,7 +25,7 @@ func New(configFile *koanf.Koanf) *Pipeline {
 	return &Pipeline{
 		SampleRate: float32(srate),
 		BufferSize: bufsize,
-		Layers:     make([]ccsds_tools.Layer[any], 6),
+		Layers:     make([]ccsds_tools.Layer, 6),
 		configFile: configFile,
 	}
 }
@@ -74,7 +74,7 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 			LastFrameSize: p.configFile.Int("xritframe.last_frame_size"),
 		}
 
-		layer := datalink.New(p.BufferSize, vitConf, xritConf, p.Layers[id-1].GetOutput(), &output)
+		layer := datalink.New(p.BufferSize, vitConf, xritConf, p.Layers[id-1].GetOutput().(*chan byte), &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.TransportLayer:
