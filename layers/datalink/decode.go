@@ -42,7 +42,8 @@ type Decoder struct {
 	DroppedPacketsPerChannel map[int]int
 	StatsMutex               sync.RWMutex
 	FrameLock                bool
-	SymbolsInput             chan byte
+	SymbolsInput             *chan byte
+	FramesOutput             *chan []byte
 	MaxVitErrors             int
 	ViterbiBytes             []byte
 	DecodedBytes             []byte
@@ -180,7 +181,7 @@ func (d *Decoder) correlate() error {
 		// Backfill bytes from the input channel to make a full frame
 		offset := uint(d.EncodedFrameSize) - pos
 		for i := offset; i < uint(d.EncodedFrameSize); i++ {
-			d.EncodedBytes[i] = <-d.SymbolsInput
+			d.EncodedBytes[i] = <-*d.SymbolsInput
 
 		}
 	}
@@ -257,10 +258,10 @@ func (d *Decoder) errorCorrectPacket() {
 func (d *Decoder) Start() {
 	for {
 		//This is the meat and potatoes here. We should get our BER, SNR, and Sync status here
-		if len(d.SymbolsInput) >= d.EncodedFrameSize {
+		if len(*d.SymbolsInput) >= d.EncodedFrameSize {
 			//Grab a frame's worth of symbols
 			for i := 0; i < d.EncodedFrameSize; i++ {
-				d.EncodedBytes[i] = <-d.SymbolsInput
+				d.EncodedBytes[i] = <-*d.SymbolsInput
 			}
 
 			//Do we have frame sync?
@@ -318,6 +319,8 @@ func (d *Decoder) Start() {
 				d.StatsMutex.Unlock()
 
 				log.Infof("[Data-Link] Got frame: vcid: %d (%s) scid: %d object number: %d", int(vcid), VCIDs[int(vcid)], scid, counter)
+				d.FramesOutput <- d.RSCorrectedData
+
 				d.StatsMutex.Lock()
 				d.RxPacketsPerChannel[int(vcid)]++
 				d.StatsMutex.Unlock()

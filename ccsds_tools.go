@@ -4,7 +4,7 @@ type LayerType int
 
 // IDs for our layer types
 const (
-	PhysicalLayer LayerType = itoa
+	PhysicalLayer LayerType = iota
 	DataLinkLayer
 	TransportLayer
 	SessionLayer
