@@ -31,7 +31,6 @@ func New(configFile *koanf.Koanf) *Pipeline {
 }
 
 func (p *Pipeline) Register(id ccsds_tools.LayerType) {
-	var layer ccsds_tools.Layer[any]
 	switch id {
 	case ccsds_tools.PhysicalLayer:
 		input := make(chan []complex64, p.BufferSize)
@@ -61,7 +60,7 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 			OmegaLimit: float32(p.configFile.Float64("clockrecovery.omega_limit")),
 		}
 
-		layer = physical.New(p.SampleRate, p.BufferSize, xritConf, agcConf, clockConf, &input, &output)
+		layer := physical.New(p.SampleRate, p.BufferSize, xritConf, agcConf, clockConf, &input, &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.DataLinkLayer:
@@ -75,7 +74,7 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 			LastFrameSize: p.configFile.Int("xritframe.last_frame_size"),
 		}
 
-		layer = datalink.New(p.BufferSize, vitConf, xritConf, p.Layers[id-1].GetOutput(), &output)
+		layer := datalink.New(p.BufferSize, vitConf, xritConf, p.Layers[id-1].GetOutput(), &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.TransportLayer:
