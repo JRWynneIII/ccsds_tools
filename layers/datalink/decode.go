@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/log"
 	"github.com/jrwynneiii/ccsds_tools/types"
 	SatHelper "github.com/opensatelliteproject/libsathelper"
 )
@@ -168,7 +167,6 @@ func (d *Decoder) checkIfFrameLocked() {
 func (d *Decoder) correlate() error {
 	// Check to make sure we actually got enough data that contains a packet/frame
 	if correlation := d.Correlator.GetHighestCorrelation(); correlation < d.MinCorrelationBits {
-		log.Debugf("Correlation did not meet criteria: have: %d, want: %d", correlation, d.MinCorrelationBits)
 		d.lastFrameOk = false
 		return fmt.Errorf("No packet lock")
 	}
@@ -250,7 +248,6 @@ func (d *Decoder) errorCorrectPacket() {
 		d.currentFrameCorrupt = false
 		d.lastFrameOk = true
 		d.AverageRsCorrections = (float64(totalBytesFixed) / float64(len(d.DecodedBytes))) * 100.0
-		log.Infof("[Reed-Solomon] Last packet: Fixed %d of %d bytes", totalBytesFixed, len(d.DecodedBytes))
 	}
 
 }
@@ -318,7 +315,6 @@ func (d *Decoder) Start() {
 				d.FrameLock = true
 				d.StatsMutex.Unlock()
 
-				log.Infof("[Data-Link] Got frame: vcid: %d (%s) scid: %d object number: %d", int(vcid), VCIDs[int(vcid)], scid, counter)
 				*d.FramesOutput <- d.RSCorrectedData
 
 				d.StatsMutex.Lock()

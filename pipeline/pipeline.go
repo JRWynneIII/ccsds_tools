@@ -3,7 +3,6 @@ package pipeline
 import (
 	"fmt"
 
-	"github.com/charmbracelet/log"
 	"github.com/jrwynneiii/ccsds_tools"
 	"github.com/jrwynneiii/ccsds_tools/layers/datalink"
 	"github.com/jrwynneiii/ccsds_tools/layers/physical"
@@ -63,7 +62,6 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 		layer := physical.New(p.SampleRate, p.BufferSize, xritConf, agcConf, clockConf, &input, &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
-		log.Infof("Registered layer: %d", id)
 	case ccsds_tools.DataLinkLayer:
 		output := make(chan []byte, p.BufferSize)
 
@@ -78,7 +76,6 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 		layer := datalink.New(p.BufferSize, vitConf, xritConf, p.Layers[id-1].GetOutput().(*chan byte), &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
-		log.Infof("Registered layer: %d", id)
 	case ccsds_tools.TransportLayer:
 	case ccsds_tools.SessionLayer:
 	case ccsds_tools.PresentationLayer:
@@ -90,15 +87,12 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 
 func (p *Pipeline) Start() {
 	for i := 0; i < p.NumLayersRegistered; i++ {
-		log.Infof("Starting layer: %d", i)
 		go p.Layers[i].Start()
 	}
-	log.Info("Started all layers")
 }
 
 func (p *Pipeline) Destroy() {
 	for i := p.NumLayersRegistered - 1; i > 0; i-- {
-		log.Infof("Destroyed layer: %d", i)
 		p.Layers[i].Destroy()
 	}
 }
