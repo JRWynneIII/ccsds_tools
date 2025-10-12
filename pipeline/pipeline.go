@@ -25,7 +25,7 @@ func New(configFile *koanf.Koanf) *Pipeline {
 	return &Pipeline{
 		SampleRate: float32(srate),
 		BufferSize: bufsize,
-		Layers:     make([]*ccsds_tools.Layer[any], 6),
+		Layers:     make([]ccsds_tools.Layer[any], 6),
 		configFile: configFile,
 	}
 }
