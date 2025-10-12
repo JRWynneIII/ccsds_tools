@@ -137,11 +137,11 @@ func New(bufsize uint, vitConf types.ViterbiConf, xritConf types.XRITFrameConf, 
 	return &d
 }
 
-func (d *Decoder) GetOutput() *any {
+func (d *Decoder) GetOutput() any {
 	return d.FramesOutput
 }
 
-func (d *Decoder) GetInput() *any {
+func (d *Decoder) GetInput() any {
 	return d.SymbolsInput
 }
 

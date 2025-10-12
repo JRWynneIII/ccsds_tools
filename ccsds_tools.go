@@ -13,8 +13,8 @@ const (
 )
 
 type Layer interface {
-	GetInput() *any
-	GetOutput() *any
+	GetInput() any
+	GetOutput() any
 	Start()
 	Destroy()
 }
