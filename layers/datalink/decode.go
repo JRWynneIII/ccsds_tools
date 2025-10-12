@@ -299,16 +299,8 @@ func (d *Decoder) Start() {
 			d.TotalFramesProcessed++
 			d.StatsMutex.Unlock()
 
-			// Spacecraft ID (TODO: This seems to always be 0 for some reason?)
-			scid := ((d.RSCorrectedData[0] & 0x3F) << 2) | (d.RSCorrectedData[1]&0xC0)>>6
-
 			// Virtual Channel ID
 			vcid := d.RSCorrectedData[1] & 0x3F
-
-			counter := uint(d.RSCorrectedData[2])
-			counter = SatHelper.ToolsSwapEndianess(counter)
-			counter &= 0xFFFFFF00
-			counter >>= 8
 
 			if !d.currentFrameCorrupt {
 				d.StatsMutex.Lock()
