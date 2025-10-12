@@ -137,11 +137,11 @@ func New(bufsize uint, vitConf types.ViterbiConf, xritConf types.XRITFrameConf, 
 	return &d
 }
 
-func (d *Decoder) GetOutput() *chan any {
+func (d *Decoder) GetOutput() *chan []byte {
 	return d.FramesOutput
 }
 
-func (d *Decoder) GetInput() *chan any {
+func (d *Decoder) GetInput() *chan byte {
 	return d.SymbolsInput
 }
 
@@ -319,7 +319,7 @@ func (d *Decoder) Start() {
 				d.StatsMutex.Unlock()
 
 				log.Infof("[Data-Link] Got frame: vcid: %d (%s) scid: %d object number: %d", int(vcid), VCIDs[int(vcid)], scid, counter)
-				d.FramesOutput <- d.RSCorrectedData
+				*d.FramesOutput <- d.RSCorrectedData
 
 				d.StatsMutex.Lock()
 				d.RxPacketsPerChannel[int(vcid)]++

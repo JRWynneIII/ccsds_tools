@@ -12,9 +12,9 @@ const (
 	ApplicationLayer
 )
 
-type Layer interface {
-	GetInput() *chan any
-	GetOutput() *chan any
+type Layer[T any] interface {
+	GetInput() *chan T
+	GetOutput() *chan T
 	Start()
 	Destroy()
 }
