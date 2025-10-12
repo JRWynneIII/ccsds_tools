@@ -63,6 +63,7 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 		layer := physical.New(p.SampleRate, p.BufferSize, xritConf, agcConf, clockConf, &input, &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
+		log.Infof("Registered layer: %d", id)
 	case ccsds_tools.DataLinkLayer:
 		output := make(chan []byte, p.BufferSize)
 
@@ -77,6 +78,7 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 		layer := datalink.New(p.BufferSize, vitConf, xritConf, p.Layers[id-1].GetOutput().(*chan byte), &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
+		log.Infof("Registered layer: %d", id)
 	case ccsds_tools.TransportLayer:
 	case ccsds_tools.SessionLayer:
 	case ccsds_tools.PresentationLayer:
@@ -95,6 +97,7 @@ func (p *Pipeline) Start() {
 
 func (p *Pipeline) Destroy() {
 	for i := p.NumLayersRegistered - 1; i > 0; i-- {
+		log.Infof("Destroyed layer: %d", id)
 		p.Layers[i].Destroy()
 	}
 }
