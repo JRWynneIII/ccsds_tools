@@ -87,9 +87,9 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 }
 
 func (p *Pipeline) Start() {
-	for id, layer := range p.Layers {
-		log.Infof("Starting layer: %d", id)
-		go layer.Start()
+	for i := 0; i < p.NumLayersRegistered-1; i++ {
+		log.Infof("Starting layer: %d", i)
+		go p.Layers[i].Start()
 	}
 }
 
