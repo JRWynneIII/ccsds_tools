@@ -5,12 +5,14 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/jrwynneiii/ccsds_tools"
+	"github.com/jrwynneiii/ccsds_tools/layers/datalink"
+	"github.com/jrwynneiii/ccsds_tools/layers/physical"
 	"github.com/jrwynneiii/ccsds_tools/types"
 	"github.com/knadh/koanf/v2"
 )
 
 type Pipeline struct {
-	Layers              []*ccsds_tools.Layer[any]
+	Layers              []ccsds_tools.Layer[any]
 	SampleRate          float32
 	BufferSize          uint
 	configFile          *koanf.Koanf
@@ -59,7 +61,7 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 			OmegaLimit: float32(p.configFile.Float64("clockrecovery.omega_limit")),
 		}
 
-		layer = layers.physical.New(p.SampleRate, p.BufferSize, xritConf, agcConf, clockConf, &input, &output)
+		layer = physical.New(p.SampleRate, p.BufferSize, xritConf, agcConf, clockConf, &input, &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.DataLinkLayer:
@@ -73,7 +75,7 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 			LastFrameSize: p.configFile.Int("xritframe.last_frame_size"),
 		}
 
-		layer = layers.datalink.New(p.BufferSize, vitConf, xritConf, p.Layers[id-1].GetOutput(), &output)
+		layer = datalink.New(p.BufferSize, vitConf, xritConf, p.Layers[id-1].GetOutput(), &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.TransportLayer:
