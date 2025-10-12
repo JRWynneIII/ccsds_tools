@@ -93,6 +93,7 @@ func (p *Pipeline) Start() {
 		log.Infof("Starting layer: %d", i)
 		go p.Layers[i].Start()
 	}
+	log.Info("Started all layers")
 }
 
 func (p *Pipeline) Destroy() {
