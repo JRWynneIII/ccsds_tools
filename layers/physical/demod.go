@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jrwynneiii/ccsds_tools/types"
 	SatHelper "github.com/opensatelliteproject/libsathelper"
 	"github.com/racerxdl/segdsp/dsp"
 	"github.com/racerxdl/segdsp/tools"
@@ -61,7 +62,7 @@ func NewSNRCalc() *SNRCalc {
 }
 
 // TODO: Move all of these from types to just arguments to the funtion; only have the Pipeline{} access the config file or its objects basically
-func New(srate float32, bufsize uint, xritConf types.XRITConf, agcConf types.AGCConf, clockConf types.ClockConf, demodInput *chan complex64, demodOutput *chan byte) *Demodulator {
+func New(srate float32, bufsize uint, xritConf types.XRITConf, agcConf types.AGCConf, clockConf types.ClockConf, demodInput *chan []complex64, demodOutput *chan byte) *Demodulator {
 	d := Demodulator{
 		SampleInput:       demodInput,
 		SymbolsOutput:     demodOutput,
@@ -90,7 +91,7 @@ func (d *Demodulator) GetOutput() *chan byte {
 }
 
 func (d *Demodulator) GetInput() *chan []complex64 {
-	return d.SamplesInput
+	return d.SampleInput
 }
 
 func (d *Demodulator) Destroy() {
