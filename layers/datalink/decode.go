@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/jrwynneiii/ccsds-tools/types"
+	"github.com/jrwynneiii/ccsds_tools/types"
 	SatHelper "github.com/opensatelliteproject/libsathelper"
 )
 
