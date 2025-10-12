@@ -97,7 +97,7 @@ func (p *Pipeline) Start() {
 
 func (p *Pipeline) Destroy() {
 	for i := p.NumLayersRegistered - 1; i > 0; i-- {
-		log.Infof("Destroyed layer: %d", id)
+		log.Infof("Destroyed layer: %d", i)
 		p.Layers[i].Destroy()
 	}
 }
