@@ -76,6 +76,29 @@ type Decoder struct {
 	currentFrameCorrupt bool
 }
 
+func (d *Decoder) Flush() {
+	for len(d.SymbolsInput) > 0 {
+		select {
+		case c := <-d.SymbolsInput:
+			func(a any) {}(c)
+		}
+	}
+	for len(d.FramesOutput) > 0 {
+		select {
+		case c := <-d.FramesOutput:
+			func(a any) {}(c)
+		}
+	}
+}
+
+func (d *Decoder) Reset() {
+	d.FrameLock = false
+	d.SigQuality = 0.0
+	d.AverageRsCorrections = 0
+	d.RxPacketsPerChannel = make(map[int]int)
+	d.DroppedPacketsPerChannel = make(map[int]int)
+	d.TotalFramesProcessed = 0
+}
 func (d *Decoder) Destroy() {
 }
 func (d *Decoder) Close() {

@@ -15,6 +15,8 @@ const (
 type Layer interface {
 	GetInput() any
 	GetOutput() any
+	Reset()
+	Flush()
 	Start()
 	Destroy()
 }

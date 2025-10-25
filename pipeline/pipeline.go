@@ -101,7 +101,14 @@ func (p *Pipeline) Pause() {
 }
 
 func (p *Pipeline) Flush() {
+	for i := 0; i < p.NumLayersRegistered; i++ {
+		p.Layers[i].Flush()
+	}
 }
 
-func (p *Pipeline) FlushLayer(id ccsds_tools.LayerType) {
+func (p *Pipeline) Reset() {
+	p.Flush()
+	for i := 0; i < p.NumLayersRegistered; i++ {
+		p.Layers[i].Reset()
+	}
 }
