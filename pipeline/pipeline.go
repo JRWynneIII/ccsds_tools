@@ -6,6 +6,8 @@ import (
 	"github.com/jrwynneiii/ccsds_tools"
 	"github.com/jrwynneiii/ccsds_tools/layers/datalink"
 	"github.com/jrwynneiii/ccsds_tools/layers/physical"
+	"github.com/jrwynneiii/ccsds_tools/layers/transport"
+	"github.com/jrwynneiii/ccsds_tools/packets"
 	"github.com/jrwynneiii/ccsds_tools/types"
 	"github.com/knadh/koanf/v2"
 )
@@ -77,6 +79,10 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.TransportLayer:
+		output := make(chan *packets.VCDU, p.BufferSize)
+		layer := transport.New(p.Layers[id-1].GetOutput().(*chan []byte), &output)
+		p.Layers[id] = layer
+		p.NumLayersRegistered++
 	case ccsds_tools.SessionLayer:
 	case ccsds_tools.PresentationLayer:
 	case ccsds_tools.ApplicationLayer:
@@ -95,9 +101,6 @@ func (p *Pipeline) Destroy() {
 	for i := p.NumLayersRegistered - 1; i > 0; i-- {
 		p.Layers[i].Destroy()
 	}
-}
-
-func (p *Pipeline) Pause() {
 }
 
 func (p *Pipeline) Flush() {
