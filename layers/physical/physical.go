@@ -196,6 +196,12 @@ func (d *Demodulator) Start() {
 	}
 }
 
+// The following method is based on the demodulation routine from
+// github.com/opensatelliteproject/SatHelperApp,
+// Copyright (c) 2018 Open Satellite Project
+//
+// It has been modified to fit within this project, as well as
+// to make it more idiomatic go
 func (d *Demodulator) demodBlock(samples []complex64) {
 	length := len(samples)
 	input := make([]complex64, length)

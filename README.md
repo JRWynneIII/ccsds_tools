@@ -14,3 +14,6 @@ Since this library was very quickly thrown together to support multiple similar 
 * The library supports (and depends on) the `koanf` package to provide runtime configuration data. This approach was chosen to minimize work needed to break this out into a common library
 * When calling `GetInput()` or `GetOutput()` on a `Layer`, it returns a generic `any`. You will need to infer the correct type of the channel, since each layer can take or output a different type
 
+### Acknowledgements:
+
+I'd like to thank the [Open Satellite Project](https://github.com/opensatelliteproject) for creating `libsathelper` (Copyright 2016 Lucas Teske), and `SatHelperApp` (Copyright (c) 2018 Open Satellite Project); these two projects were extremely helpful in the development of the demodulator and decoder, and served, not only as a good reference point for development of `ccsds_tools`, but as a wonderful reference for learning various concepts about SDR and xRIT programming. 

@@ -144,6 +144,12 @@ func (d *Decoder) GetInput() any {
 	return d.SymbolsInput
 }
 
+// The following methods are based on the decoding routines from
+// github.com/opensatelliteproject/SatHelperApp,
+// Copyright (c) 2018 Open Satellite Project
+//
+// It has been modified to fit within this project, as well as
+// to make it more idiomatic/less monolithic
 func (d *Decoder) checkIfFrameLocked() {
 	// Use the correlator to see where the sync words are in the frame, such that we know where the packet starts
 	// If we're not frame locked, or we've gotten a lot of good packets and should make sure were on the right
