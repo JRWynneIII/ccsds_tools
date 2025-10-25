@@ -79,7 +79,7 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.TransportLayer:
-		output := make(chan *packets.VCDU, p.BufferSize)
+		output := make(chan *packets.LRITFile, p.BufferSize)
 		layer := transport.New(p.Layers[id-1].GetOutput().(*chan []byte), &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
