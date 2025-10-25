@@ -77,15 +77,15 @@ type Decoder struct {
 }
 
 func (d *Decoder) Flush() {
-	for len(d.SymbolsInput) > 0 {
+	for len(*d.SymbolsInput) > 0 {
 		select {
-		case c := <-d.SymbolsInput:
+		case c := <-*d.SymbolsInput:
 			func(a any) {}(c)
 		}
 	}
-	for len(d.FramesOutput) > 0 {
+	for len(*d.FramesOutput) > 0 {
 		select {
-		case c := <-d.FramesOutput:
+		case c := <-*d.FramesOutput:
 			func(a any) {}(c)
 		}
 	}

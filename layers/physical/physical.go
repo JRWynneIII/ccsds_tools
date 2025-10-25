@@ -87,15 +87,15 @@ func New(srate float32, bufsize uint, xritConf types.XRITConf, agcConf types.AGC
 }
 
 func (d *Demodulator) Flush() {
-	for len(d.SymbolsInput) > 0 {
+	for len(*d.SymbolsInput) > 0 {
 		select {
-		case c := <-d.SampleInput:
+		case c := <-*d.SampleInput:
 			func(a any) {}(c)
 		}
 	}
-	for len(d.SymbolsOutput) > 0 {
+	for len(*d.SymbolsOutput) > 0 {
 		select {
-		case c := <-d.SymbolsOutput:
+		case c := <-*d.SymbolsOutput:
 			func(a any) {}(c)
 		}
 	}
