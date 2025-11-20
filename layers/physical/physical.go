@@ -116,7 +116,7 @@ func (d *Demodulator) Destroy() {
 	d.Close()
 }
 
-func trimSlice(s []complex64) []complex64 {
+func trimSlice(s []complex64, maxtrim int) []complex64 {
 	if len(s) > 0 {
 		lastZero := -1
 		for i := len(s) - 1; i >= 0; i-- {
@@ -128,7 +128,8 @@ func trimSlice(s []complex64) []complex64 {
 		if lastZero == -1 {
 			return s
 		}
-		return s[:lastZero+1]
+		idx := min(lastZero, maxtrim-1)
+		return s[:idx+1]
 	}
 	return s
 }
@@ -224,7 +225,7 @@ func (d *Demodulator) demodBlock(samples []complex64) {
 	length := len(samples)
 	input := make([]complex64, length)
 
-	if length <= 64*1024 {
+	if length < 64*1024 {
 		return
 	}
 
@@ -246,15 +247,17 @@ func (d *Demodulator) demodBlock(samples []complex64) {
 
 	//Frequency Sync
 	out = d.CostasLoop.Work(out)
+	length = len(out)
 
 	//Clock Sync
-	syncd := make([]complex64, len(out))
-	numSymbols := d.ClockRecovery.Work(&out[0], &syncd[0], len(out))
+	syncd := make([]complex64, length)
+	numSymbols := d.ClockRecovery.Work(&out[0], &syncd[0], length)
 
 	//Trim out any extra space we have
 	//NOTE: This may or may not be a good idea, but it allows our SNR calculator to actually work
 	//	If this causes an issue with the datalink layer, then lets move the trim to the SNR object
-	syncd = trimSlice(syncd)
+	//syncd = trimSlice(syncd, length)
+	syncd = syncd[:length]
 
 	// Update our SNR values in the demodulator
 	snr := d.GetSNR(&syncd)

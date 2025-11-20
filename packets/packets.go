@@ -1,12 +1,12 @@
 package packets
 
 import (
-	"encoding/binary"
 	"fmt"
 )
 
 type LRITFile struct {
-	Data []LRITBlock
+	Header LRITHeader
+	Data   []LRITBlock
 }
 
 // size 8192 bytes
@@ -18,91 +18,149 @@ type LRITBlock struct {
 	CRC uint16
 }
 
+type LRITHeader struct {
+	FileCounter uint16
+	Length      uint64
+}
+
 // Size = 892 bytes
 type VCDU struct {
-	Header   VCDUPrimaryHeader // 6 bytes
-	DataZone M_PDU             // 886 bytes
+	// VCDU Header 6 bytes
+	VCDUVersion uint8
+	VCDUSCID    uint8
+	VCID        uint8
+	VCDUCounter uint32
+	VCDUReplay  bool
+
+	// M_PDU Header 2 bytes
+	FirstHeaderOffset uint16
+
+	MSDUs []CPPDU
+
+	Data []byte
+
+	//Custom non-ccsds parameters
+	IsCorrupt bool
 }
 
-// Size = 886 bytes
-type M_PDU struct {
-	Header M_PDUHeader // 2 bytes
-	Data   []byte      // 884 bytes
+type TPPDUHeader struct {
+	Length  uint64
+	Counter uint16
 }
 
-// Size = 2 bytes
-type M_PDUHeader struct {
-	FirstHeaderPointer int // If == 2047, then all data in this packet belongs to previous block
-}
+type TPPDU struct {
+	Header      TPPDUHeader
+	VCDUVersion uint8
+	VCDUSCID    uint8
+	VCID        uint8
+	VCDUCounter uint32
+	VCDUReplay  bool
 
-type CP_PDU struct {
-	// Size of following is 6 bytes
-	Version               int
+	Version               uint8
 	Type                  bool
 	SecondaryHeaderFlag   bool
-	APID                  int
-	SequenceFlag          int
-	PacketSequencyCounter int
-	PacketLength          int
-	// Variable! 1 - 8192 bytes!!!
-	// UserData can span multiple M_PDU blocks!!! This is WEIRD
-	UserData []byte
+	APID                  uint16
+	SequenceFlag          uint8
+	PacketSequenceCounter uint16
+	PacketLength          uint16
+	Data                  []byte
+	WantCRC               uint16
+	HaveCRC               uint16
 }
 
-// Size = 6 bytes
-type VCDUPrimaryHeader struct {
-	Version int
-	SCID    int
-	VCID    int
-	Counter int
-	Replay  bool
+type CPPDUHeader struct {
+	Version               uint8
+	Type                  bool
+	SecondaryHeaderFlag   bool
+	APID                  uint16
+	SequenceFlag          uint8
+	PacketSequenceCounter uint16
+	PacketLength          uint16
+}
+
+type CPPDU struct {
+	Header CPPDUHeader
+	//CP_PDU Header 6 bytes
+	Data    []byte
+	WantCRC uint16
+	HaveCRC uint16
+
+	VCDUVersion uint8
+	VCDUSCID    uint8
+	VCID        uint8
+	VCDUCounter uint32
+	VCDUReplay  bool
+}
+
+// Derived from GOESTools' diffWithWrap() utility
+// https://github.com/pietern/goestools/blob/80ece1a7ab8a93fb5dfa50d47387ae7c4a8f2a73/src/assembler/crc.cc
+// Copyright (c) 2017, Pieter Noordhuis
+func (t *TPPDU) CalcCRC() {
+	crc := uint16(0xFFFF)
+	elementIdx := len(t.Data) - 1
+	idx := 0
+
+	for elementIdx >= 0 {
+		crc = (crc << 8) ^ crcTable[(crc>>8)^uint16(t.Data[idx])]
+		idx += 1
+		elementIdx -= 1
+	}
+	t.WantCRC = crc
+}
+
+// Based upon GOESTools' diffWithWrap() utility
+// https://github.com/pietern/goestools/blob/80ece1a7ab8a93fb5dfa50d47387ae7c4a8f2a73/src/goesemwin/qbt.cc#L52
+// Copyright (c) 2017, Pieter Noordhuis
+func CounterDiff(div, a, b uint32) uint {
+	ret := uint(0)
+	if a < div && b < div {
+		if a <= b {
+			ret = uint(b - a)
+		} else {
+			ret = uint(div - a + b)
+		}
+	}
+
+	return ret
+}
+
+func FrameIsValid(data []byte) bool {
+	if len(data) != 892 {
+		return false
+	}
+
+	return true
+}
+
+func (v *VCDU) FHPIsValid() error {
+	if v.FirstHeaderOffset > uint16(len(v.Data)-1) {
+		v.IsCorrupt = true
+		return fmt.Errorf("Invalid FHP found in VCDU (VCID: %d, Counter: %d)", v.VCID, v.VCDUCounter)
+	}
+	return nil
+}
+
+func (v *VCDU) ContainsMSDUHeader() bool {
+	if v.FirstHeaderOffset == 2047 {
+		return false
+	}
+	return true
+}
+
+func (c *CPPDUHeader) IsFillPacket() bool {
+	if c.APID == 2047 {
+		return true
+	}
+	return false
+}
+
+func (v *VCDU) IsFillPacket() bool {
+	if v.VCID == 63 {
+		return true
+	}
+	return false
 }
 
 func (v *VCDU) String() string {
 	return fmt.Sprintf("%##v", *v)
-}
-
-func ParseFrame(data []byte) *VCDU {
-	header := data[:6]
-	datazone := data[6:]
-	v := VCDU{
-		Header:   CreateVCDUPrimaryHeader(header),
-		DataZone: CreateM_PDU(datazone),
-	}
-	return &v
-}
-
-func CreateVCDUPrimaryHeader(data []byte) VCDUPrimaryHeader {
-	//data length = 6 bytes
-	version := (data[0] & 0b11000000) >> 6
-	id := binary.BigEndian.Uint16(data[:2]) & 0b0011111111111111
-	scid := (id & 0b001111111100000000) >> 8
-	vcid := id & 0b000000000011111111
-	counter := binary.BigEndian.Uint16(data[2:5])
-	replay := ((data[5] & 0b10000000) >> 7) > 0
-
-	return VCDUPrimaryHeader{
-		Version: int(version),
-		SCID:    int(scid),
-		VCID:    int(vcid),
-		Counter: int(counter),
-		Replay:  replay,
-	}
-}
-
-func CreateM_PDUHeader(data []byte) M_PDUHeader {
-	//data length = 2 bytes
-	return M_PDUHeader{
-		FirstHeaderPointer: int(binary.BigEndian.Uint16(data) & 0b0000011111111111),
-	}
-}
-
-func CreateM_PDU(data []byte) M_PDU {
-	//data length = 886 bytes
-	header := data[:2]
-	packetzone := data[2:]
-	return M_PDU{
-		Header: CreateM_PDUHeader(header),
-		Data:   packetzone,
-	}
 }
