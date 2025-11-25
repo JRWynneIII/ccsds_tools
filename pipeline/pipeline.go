@@ -6,7 +6,9 @@ import (
 	"github.com/jrwynneiii/ccsds_tools"
 	"github.com/jrwynneiii/ccsds_tools/layers/datalink"
 	"github.com/jrwynneiii/ccsds_tools/layers/physical"
+	"github.com/jrwynneiii/ccsds_tools/layers/session"
 	"github.com/jrwynneiii/ccsds_tools/layers/transport"
+	"github.com/jrwynneiii/ccsds_tools/lrit"
 	"github.com/jrwynneiii/ccsds_tools/packets"
 	"github.com/jrwynneiii/ccsds_tools/types"
 	"github.com/knadh/koanf/v2"
@@ -79,11 +81,15 @@ func (p *Pipeline) Register(id ccsds_tools.LayerType) {
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.TransportLayer:
-		output := make(chan *packets.LRITFile, p.BufferSize)
+		output := make(chan *packets.TransportFile, p.BufferSize)
 		layer := transport.New(p.Layers[id-1].GetOutput().(*chan []byte), &output)
 		p.Layers[id] = layer
 		p.NumLayersRegistered++
 	case ccsds_tools.SessionLayer:
+		output := make(chan *lrit.File, p.BufferSize)
+		layer := session.New(p.Layers[id-1].GetOutput().(*chan *packets.TransportFile), &output)
+		p.Layers[id] = layer
+		p.NumLayersRegistered++
 	case ccsds_tools.PresentationLayer:
 	case ccsds_tools.ApplicationLayer:
 	default:

@@ -257,7 +257,7 @@ func (d *Demodulator) demodBlock(samples []complex64) {
 	//NOTE: This may or may not be a good idea, but it allows our SNR calculator to actually work
 	//	If this causes an issue with the datalink layer, then lets move the trim to the SNR object
 	//syncd = trimSlice(syncd, length)
-	syncd = syncd[:length]
+	//syncd = syncd[:length]
 
 	// Update our SNR values in the demodulator
 	snr := d.GetSNR(&syncd)

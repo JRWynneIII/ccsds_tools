@@ -19,8 +19,8 @@ func NewTransportAssembler() *TransportAssembler {
 	return &TransportAssembler{0, 0, []byte{}, nil}
 }
 
-func MakeMSDUHeader(data []byte) (packets.CPPDUHeader, error) {
-	h := packets.CPPDUHeader{}
+func MakeMSDUHeader(data []byte) (packets.MSDUHeader, error) {
+	h := packets.MSDUHeader{}
 	if len(data) < 6 {
 		return h, fmt.Errorf("Not enough data for header! Need 6 hytes")
 	}
@@ -35,14 +35,14 @@ func MakeMSDUHeader(data []byte) (packets.CPPDUHeader, error) {
 	return h, nil
 }
 
-func MakeTPPDUHeader(data []byte) (packets.TPPDUHeader, error) {
+func MakeTransportFileHeader(data []byte) (packets.TransportFileHeader, error) {
 	if len(data) < 10 {
-		return packets.TPPDUHeader{}, fmt.Errorf("data is too short for tppdu header creation")
+		return packets.TransportFileHeader{}, fmt.Errorf("data is too short for tppdu header creation")
 	}
 
 	counter := (uint16(data[0]) << 8) | uint16(data[1])
 	length := (uint64(data[2]) << 56) | (uint64(data[3]) << 48) | (uint64(data[4]) << 40) | (uint64(data[5]) << 32) | (uint64(data[6]) << 24) | (uint64(data[7]) << 16) | (uint64(data[8]) << 8) | uint64(data[9])
-	return packets.TPPDUHeader{
+	return packets.TransportFileHeader{
 		Counter: counter,
 		Length:  length,
 	}, nil
@@ -75,7 +75,7 @@ func (t *TransportAssembler) savePartialPacketEnd(fhp uint16, data []byte) []byt
 	return data[fhp:]
 }
 
-func (t *TransportAssembler) ParseMSDUs(vcdu *packets.VCDU) ([]packets.CPPDU, error) {
+func (t *TransportAssembler) ParseMSDUs(vcdu *packets.VCDU) ([]packets.MSDU, error) {
 	err := t.checkForSkippedVCDU(vcdu)
 	if err != nil {
 		if strings.Contains(err.Error(), "Duplicate VCDU found!") {
@@ -85,7 +85,7 @@ func (t *TransportAssembler) ParseMSDUs(vcdu *packets.VCDU) ([]packets.CPPDU, er
 		log.Error(err)
 	}
 
-	var ret []packets.CPPDU
+	var ret []packets.MSDU
 
 	// If we get a packet without a header, just append all the data
 	if !vcdu.ContainsMSDUHeader() {
@@ -114,7 +114,7 @@ func (t *TransportAssembler) ParseMSDUs(vcdu *packets.VCDU) ([]packets.CPPDU, er
 		} else {
 			// If its not a fill cppdu
 			if !header.IsFillPacket() {
-				c := packets.CPPDU{
+				c := packets.MSDU{
 					Header:      header,
 					VCDUVersion: t.lastVCDU.VCDUVersion,
 					VCDUSCID:    t.lastVCDU.VCDUSCID,
@@ -163,7 +163,7 @@ func (t *TransportAssembler) ParseMSDUs(vcdu *packets.VCDU) ([]packets.CPPDU, er
 				break
 			}
 
-			c := packets.CPPDU{
+			c := packets.MSDU{
 				Header:      header,
 				Data:        data[:header.PacketLength],
 				VCDUVersion: vcdu.VCDUVersion,
@@ -200,16 +200,13 @@ func (t *TransportAssembler) ParseFrame(data []byte) (*packets.VCDU, error) {
 	replay := ((data[5] & 0b10000000) >> 7) > 0
 	data = data[6:]
 
-	//TODO: Remove; this is just a sanity check
 	if len(data) != 886 {
 		log.Errorf("Header too large? VCDU Data zone size = %d; want 886", len(data))
 	}
 
-	//fhp := (binary.BigEndian.Uint16(data[:2]) & 0b0000111111111111)
 	fhp := ((uint16(data[0]) & 0x7) << 8) | uint16(data[1])
 	data = data[2:]
 
-	//TODO: Remove; this is just a sanity check
 	if len(data) != 884 {
 		log.Errorf("MPDU Packet zone too large/small! Got: %d want 884", len(data))
 	}

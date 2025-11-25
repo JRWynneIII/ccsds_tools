@@ -4,25 +4,6 @@ import (
 	"fmt"
 )
 
-type LRITFile struct {
-	Header LRITHeader
-	Data   []LRITBlock
-}
-
-// size 8192 bytes
-// Constructed from multiple VCDU's
-type LRITBlock struct {
-	// 8190 bytes
-	Data []byte
-	//2 bytes
-	CRC uint16
-}
-
-type LRITHeader struct {
-	FileCounter uint16
-	Length      uint64
-}
-
 // Size = 892 bytes
 type VCDU struct {
 	// VCDU Header 6 bytes
@@ -35,7 +16,7 @@ type VCDU struct {
 	// M_PDU Header 2 bytes
 	FirstHeaderOffset uint16
 
-	MSDUs []CPPDU
+	MSDUs []MSDU
 
 	Data []byte
 
@@ -43,32 +24,29 @@ type VCDU struct {
 	IsCorrupt bool
 }
 
-type TPPDUHeader struct {
+type TransportFileHeader struct {
 	Length  uint64
 	Counter uint16
 }
 
-type TPPDU struct {
-	Header      TPPDUHeader
+type TransportFile struct {
+	Header TransportFileHeader
+
 	VCDUVersion uint8
-	VCDUSCID    uint8
 	VCID        uint8
-	VCDUCounter uint32
-	VCDUReplay  bool
 
-	Version               uint8
-	Type                  bool
-	SecondaryHeaderFlag   bool
-	APID                  uint16
-	SequenceFlag          uint8
-	PacketSequenceCounter uint16
-	PacketLength          uint16
-	Data                  []byte
-	WantCRC               uint16
-	HaveCRC               uint16
+	Version             uint8
+	Type                bool
+	SecondaryHeaderFlag bool
+	APID                uint16
+	PacketLength        uint16
+	Data                []byte
+	//	WantCRC             uint16
+	//	HaveCRC             uint16
+	CRCGood bool
 }
 
-type CPPDUHeader struct {
+type MSDUHeader struct {
 	Version               uint8
 	Type                  bool
 	SecondaryHeaderFlag   bool
@@ -78,12 +56,13 @@ type CPPDUHeader struct {
 	PacketLength          uint16
 }
 
-type CPPDU struct {
-	Header CPPDUHeader
+type MSDU struct {
+	Header MSDUHeader
 	//CP_PDU Header 6 bytes
-	Data    []byte
-	WantCRC uint16
-	HaveCRC uint16
+	Data []byte
+	//	WantCRC uint16
+	//	HaveCRC uint16
+	CRCGood bool
 
 	VCDUVersion uint8
 	VCDUSCID    uint8
@@ -92,20 +71,24 @@ type CPPDU struct {
 	VCDUReplay  bool
 }
 
-// Derived from GOESTools' diffWithWrap() utility
+//func (t *TransportFile) CalcCRC() {
+//	t.WantCRC = CalcCRCBuffer(t.Data)
+//}
+
+// Derived from GOESTools
 // https://github.com/pietern/goestools/blob/80ece1a7ab8a93fb5dfa50d47387ae7c4a8f2a73/src/assembler/crc.cc
 // Copyright (c) 2017, Pieter Noordhuis
-func (t *TPPDU) CalcCRC() {
+func CalcCRCBuffer(data []byte) uint16 {
 	crc := uint16(0xFFFF)
-	elementIdx := len(t.Data) - 1
+	elementIdx := len(data) - 1
 	idx := 0
 
 	for elementIdx >= 0 {
-		crc = (crc << 8) ^ crcTable[(crc>>8)^uint16(t.Data[idx])]
+		crc = (crc << 8) ^ crcTable[(crc>>8)^uint16(data[idx])]
 		idx += 1
 		elementIdx -= 1
 	}
-	t.WantCRC = crc
+	return crc
 }
 
 // Based upon GOESTools' diffWithWrap() utility
@@ -147,7 +130,7 @@ func (v *VCDU) ContainsMSDUHeader() bool {
 	return true
 }
 
-func (c *CPPDUHeader) IsFillPacket() bool {
+func (c *MSDUHeader) IsFillPacket() bool {
 	if c.APID == 2047 {
 		return true
 	}
