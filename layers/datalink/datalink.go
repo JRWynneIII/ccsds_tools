@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/jrwynneiii/ccsds_tools/types"
 	SatHelper "github.com/opensatelliteproject/libsathelper"
 )
@@ -54,7 +55,6 @@ type Decoder struct {
 	RSCorrectedBytes         int64
 	ReedSolomon              SatHelper.ReedSolomon
 	Correlator               SatHelper.Correlator
-	PacketFixer              SatHelper.PacketFixer
 	SyncWord                 []byte
 	EncodedFrameSize         int
 	MaxRecheckThreshold      int
@@ -104,6 +104,14 @@ func (d *Decoder) Destroy() {
 func (d *Decoder) Close() {
 }
 
+func (d *Decoder) clearBuffers() {
+	d.ViterbiBytes = make([]byte, len(d.ViterbiBytes))
+	d.DecodedBytes = make([]byte, len(d.DecodedBytes))
+	d.EncodedBytes = make([]byte, len(d.EncodedBytes))
+	d.RSWorkBuffer = make([]byte, 255)
+	d.RSCorrectedData = make([]byte, len(d.RSCorrectedData))
+}
+
 func New(bufsize uint, vitConf types.ViterbiConf, xritConf types.XRITFrameConf, input *chan byte, output *chan []byte) *Decoder {
 	frameSizeBits := xritConf.FrameSize * 8
 	encodedFrameSize := frameSizeBits * 2
@@ -129,7 +137,6 @@ func New(bufsize uint, vitConf types.ViterbiConf, xritConf types.XRITFrameConf, 
 		LastFrameSizeBytes:       xritConf.LastFrameSize,
 		ReedSolomon:              SatHelper.NewReedSolomon(),
 		Correlator:               SatHelper.NewCorrelator(),
-		PacketFixer:              SatHelper.NewPacketFixer(),
 		EncodedFrameSize:         encodedFrameSize,
 		MaxRecheckThreshold:      100,
 		MinCorrelationBits:       46,
@@ -153,6 +160,8 @@ func New(bufsize uint, vitConf types.ViterbiConf, xritConf types.XRITFrameConf, 
 	d.ReedSolomon.SetCopyParityToOutput(true)
 
 	// Prime the correlator
+	// See https://lucasteske.dev/2017/01/goes-16-in-the-house/#syncing-data-and-viterbi for reasoning.
+	// The correlator will sync up our frames correctly
 	d.Correlator.AddWord(uint64(0xfc4ef4fd0cc2df89))
 	d.Correlator.AddWord(uint64(0x25010b02f33d2076))
 
@@ -281,6 +290,10 @@ func (d *Decoder) errorCorrectPacket() {
 
 }
 
+func (d *Decoder) stripRSDataFromFrame() {
+	d.RSCorrectedData = d.RSCorrectedData[:d.FrameSize-d.RSParityBlockSize-d.SyncWordSize]
+}
+
 func (d *Decoder) Start() {
 	for {
 		//This is the meat and potatoes here. We should get our BER, SNR, and Sync status here
@@ -319,10 +332,15 @@ func (d *Decoder) Start() {
 
 			d.cleanFrame()
 
-			// Derandomize packet: Unsure what exactly this does tbh
 			SatHelper.DeRandomizerDeRandomize(&d.DecodedBytes[0], d.FrameSize-d.SyncWordSize)
 
 			d.errorCorrectPacket()
+
+			d.stripRSDataFromFrame()
+
+			if len(d.RSCorrectedData) != 892 {
+				log.Errorf("Incorrect frame size: Have: %d Want: 892", len(d.RSCorrectedData))
+			}
 
 			d.StatsMutex.Lock()
 			d.TotalFramesProcessed++
@@ -330,6 +348,7 @@ func (d *Decoder) Start() {
 
 			// Virtual Channel ID
 			vcid := d.RSCorrectedData[1] & 0x3F
+			//counter := (uint32(d.RSCorrectedData[2]) << 16) | (uint32(d.RSCorrectedData[3]) << 8) | uint32(d.RSCorrectedData[4])
 
 			if !d.currentFrameCorrupt {
 				d.StatsMutex.Lock()
@@ -347,6 +366,8 @@ func (d *Decoder) Start() {
 				d.FrameLock = false
 				d.StatsMutex.Unlock()
 			}
+
+			d.clearBuffers()
 
 		} else {
 			// Not enough symbols available, so lets sleep on it
