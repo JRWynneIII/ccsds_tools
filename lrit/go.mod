@@ -1,4 +1,4 @@
-module github.com/ccsds_tools/lrit
+module github.com/jrwynneiii/ccsds_tools/lrit
 
 go 1.24.9
 
