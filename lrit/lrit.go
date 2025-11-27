@@ -1,10 +1,14 @@
 package lrit
 
 import (
+	"archive/zip"
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/log"
@@ -137,6 +141,25 @@ type RiceCompressionHeader struct {
 	ScanlinesPerPacket uint8
 }
 
+func NewExistingFile(path string) (*File, error) {
+	if data, err := os.ReadFile(path); err == nil {
+		ph := MakePrimaryHeader(data)
+		data = data[16:]
+		lf := File{
+			PrimaryHeader: ph,
+			Data:          data,
+			CRCGood:       true,
+		}
+
+		if err = lf.PopulateSecondaryHeaders(); err != nil {
+			return nil, fmt.Errorf("Could not parse LRIT file headers (%s): %s", path, err.Error())
+		}
+		return &lf, nil
+	} else {
+		return nil, fmt.Errorf("Can not read LRIT file %s", path)
+	}
+}
+
 var filecounter map[string]int = make(map[string]int)
 
 func (l File) WriteFile(dir string) {
@@ -147,6 +170,43 @@ func (l File) WriteFile(dir string) {
 	}
 	if err := os.WriteFile(path, l.RawData, os.FileMode(0644)); err != nil {
 		log.Errorf("Could not write file %s", path)
+	}
+}
+
+func (l File) IsImageFile() bool {
+	hasImgStructHeader := slices.ContainsFunc(l.SecondaryHeaders, func(a SecondaryHeader) bool {
+		return a.HeaderType() == ImageStructureHeaderType
+	})
+	if l.PrimaryHeader.FileType == 0 && hasImgStructHeader {
+		return true
+	}
+	return false
+}
+
+func (l File) ContainsZipArchive() bool {
+	nsh := l.FindSecondaryHeader(NOAASpecificHeaderType).(NOAASpecificHeader)
+	if l.PrimaryHeader.FileType != 0 && nsh.NOAASpecificCompression > 1 {
+		return true
+	}
+	return false
+}
+
+func (l File) UnzipToBuffer() (map[string][]byte, error) {
+	ret := make(map[string][]byte)
+	if zr, err := zip.NewReader(bytes.NewReader(l.Data), int64(len(l.Data))); err == nil {
+		for _, file := range zr.File {
+			if f, err := file.Open(); err == nil {
+				defer f.Close()
+				if ret[file.Name], err = io.ReadAll(f); err != nil {
+					return ret, err
+				}
+			} else {
+				return ret, err
+			}
+		}
+		return ret, nil
+	} else {
+		return ret, err
 	}
 }
 

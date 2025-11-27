@@ -41,9 +41,7 @@ type TransportFile struct {
 	APID                uint16
 	PacketLength        uint16
 	Data                []byte
-	//	WantCRC             uint16
-	//	HaveCRC             uint16
-	CRCGood bool
+	CRCGood             bool
 }
 
 type MSDUHeader struct {
@@ -60,9 +58,6 @@ type MSDU struct {
 	Header MSDUHeader
 	//CP_PDU Header 6 bytes
 	Data []byte
-	//	WantCRC uint16
-	//	HaveCRC uint16
-	CRCGood bool
 
 	VCDUVersion uint8
 	VCDUSCID    uint8
@@ -70,10 +65,6 @@ type MSDU struct {
 	VCDUCounter uint32
 	VCDUReplay  bool
 }
-
-//func (t *TransportFile) CalcCRC() {
-//	t.WantCRC = CalcCRCBuffer(t.Data)
-//}
 
 // Derived from GOESTools
 // https://github.com/pietern/goestools/blob/80ece1a7ab8a93fb5dfa50d47387ae7c4a8f2a73/src/assembler/crc.cc

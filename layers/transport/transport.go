@@ -20,17 +20,19 @@ type TransportLayer struct {
 	IncompletePackets map[uint8]map[uint16][]*packets.MSDU
 	IgnoredChannels   []uint8
 
-	ContinueOnCRCFailure bool
+	ContinueOnCRCFailure   bool
+	FillMissingSDUWithNull bool
 }
 
 func New(input *chan []byte, output *chan *packets.TransportFile) *TransportLayer {
 	return &TransportLayer{
-		FramesInput:          input,
-		TransportOutput:      output,
-		Assemblers:           make(map[uint8]*TransportAssembler),
-		TransportFiles:       make(map[uint8]map[uint16][]*packets.TransportFile),
-		IncompletePackets:    make(map[uint8]map[uint16][]*packets.MSDU),
-		ContinueOnCRCFailure: false,
+		FramesInput:            input,
+		TransportOutput:        output,
+		Assemblers:             make(map[uint8]*TransportAssembler),
+		TransportFiles:         make(map[uint8]map[uint16][]*packets.TransportFile),
+		IncompletePackets:      make(map[uint8]map[uint16][]*packets.MSDU),
+		ContinueOnCRCFailure:   false,
+		FillMissingSDUWithNull: true,
 	}
 }
 
@@ -82,6 +84,7 @@ func (t *TransportLayer) InsertIncompletePacket(vcid uint8, packet *packets.MSDU
 	t.IncompletePackets[vcid][packet.Header.APID] = append(t.IncompletePackets[vcid][packet.Header.APID], packet)
 }
 
+// TODO: Clean this up
 func SDUNeedsDecompress(data []byte) (bool, int, lrit.RiceCompressionHeader, lrit.ImageStructureHeader) {
 	needsDecompress := false
 	endOfHeaders := 0
@@ -196,31 +199,24 @@ func (l *TransportLayer) CreateTransportFile(sdus []*packets.MSDU) *packets.Tran
 	t := packets.TransportFile{}
 
 	var data []byte
-	//var CRC uint16
-	//var calcCRC uint16
 
 	sort.Slice(sdus, func(a, b int) bool {
 		return sdus[a].Header.PacketSequenceCounter < sdus[b].Header.PacketSequenceCounter
 	})
 
-	//var crcMatch bool = true
 	for idx, sdu := range sdus {
 		if idx > 0 {
 			if diff := packets.CounterDiff(16384, uint32(sdus[idx-1].Header.PacketSequenceCounter), uint32(sdu.Header.PacketSequenceCounter)) - 1; diff > 0 {
 				log.Errorf("Missing SDU! Last packet: %d, current packet: %d", sdus[idx-1].Header.PacketSequenceCounter, sdu.Header.PacketSequenceCounter)
-				// Add null bytes when missing chunk
-				if fill, err := GetFillSDUs(data, diff); err == nil {
+				//TODO: Ensure this works!
+				if fill, err := GetFillSDUs(data, diff); err == nil && l.FillMissingSDUWithNull {
+					// Add null bytes when missing chunk
 					data = append(data, fill...)
 				} else {
 					log.Error(err)
 				}
 			}
 		}
-
-		//	//TODO: Maybe just drop the SDU if the crc match fails?
-		//	if !sdu.CRCGood {
-		//		crcMatch = false
-		//	}
 
 		// Check if we have a compressed image packet
 		needsDecompress, endOfHeaders, rch, ish := SDUNeedsDecompress(data)
@@ -239,11 +235,7 @@ func (l *TransportLayer) CreateTransportFile(sdus []*packets.MSDU) *packets.Tran
 		}
 	}
 
-	//CRC = (uint16(data[len(data)-2]) << 8) | uint16(data[len(data)-1])
-	//data = data[:len(data)-2]
 	t.Data = data
-	//t.CalcCRC()
-	//t.WantCRC = calcCRC
 
 	var err error
 	t.Header, err = MakeTransportFileHeader(data)
@@ -277,7 +269,7 @@ func (t *TransportLayer) ProcessVCDU(vcdu *packets.VCDU) {
 					continue
 				}
 
-				//Calculate our CRC
+				//Calculate our CRC and check our CRC's
 				CRC := (uint16(sdu.Data[len(sdu.Data)-2]) << 8) | uint16(sdu.Data[len(sdu.Data)-1])
 				sdu.Data = sdu.Data[:len(sdu.Data)-2]
 
@@ -285,9 +277,9 @@ func (t *TransportLayer) ProcessVCDU(vcdu *packets.VCDU) {
 				if calcCRC != CRC {
 					log.Errorf("<TRANSPORT> Detected CRC mismatch in SDU for packet. Have: %d, want: %d", calcCRC, CRC)
 					if !t.ContinueOnCRCFailure {
+						//If we don't have a valid CRC, drop this SDU
 						continue
 					}
-					//sdu.CRCGood = false
 				}
 
 				sdu.VCDUVersion = vcdu.VCDUVersion
