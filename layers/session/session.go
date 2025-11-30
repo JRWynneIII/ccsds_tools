@@ -1,7 +1,6 @@
 package session
 
 import (
-	"slices"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -33,52 +32,41 @@ func (t *LRITGen) Start() {
 }
 
 func (l *LRITGen) ProcessTransportFile(t *packets.TransportFile) {
-	//l.dumpTransportFile(t)
-	lf := lrit.File{
-		Version:     t.Version,
-		VCDUVersion: t.VCDUVersion,
-		Data:        t.Data,
-		//	HaveCRC:     t.HaveCRC,
-		//	WantCRC:     t.WantCRC,
-		RawData: t.Data,
-		VCID:    t.VCID,
-		CRCGood: t.CRCGood,
-	}
-	ph := lrit.MakePrimaryHeader(lf.Data)
-
-	lf.PrimaryHeader = ph
-	lf.Data = lf.Data[16:]
-	if !ph.IsValid() {
-		log.Errorf("Invalid LRIT primary header detected! %##v", ph)
-		return
-	}
-
-	if err := lf.PopulateSecondaryHeaders(); err != nil {
-		log.Error(err)
-	}
-
-	if valid, err := lf.IsValid(); !valid {
-		switch err {
-		case lrit.LRITPrimaryHeaderErr:
-			log.Error(err)
-			return
-		case lrit.LRITLengthMismatchErr:
-			log.Errorf("%s. Have: %d, Want: %d", err.Error(), len(lf.Data), lf.PrimaryHeader.DataLength/8)
-			return
-		case lrit.LRITCRCMismatchErr:
-			hasImgStructHeader := slices.ContainsFunc(lf.SecondaryHeaders, func(a lrit.SecondaryHeader) bool {
-				return a.HeaderType() == lrit.ImageStructureHeaderType
-			})
-			if lf.PrimaryHeader.FileType == 0 && hasImgStructHeader {
-				log.Warnf("LRIT file %s has CRC mismatch, but attempting to continue...", lf.GetName())
-			} else {
-				log.Errorf("LRIT file has CRC mismatch! Dropping...")
+	if lf, err := lrit.NewLRITFile(t.Version, t.VCDUVersion, t.Data, t.CRCGood, t.VCID); err == nil {
+		if valid, err := lf.IsValid(); !valid {
+			switch err {
+			case lrit.LRITPrimaryHeaderErr:
+				log.Error(err)
 				return
+			case lrit.LRITLengthMismatchErr:
+				log.Errorf("%s. Have: %d, Want: %d", err.Error(), len(lf.Data), lf.PrimaryHeader.DataLength/8)
+				return
+			case lrit.LRITCRCMismatchErr:
+				if lf.IsImageFile() {
+					log.Warnf("LRIT file %s has CRC mismatch, but attempting to continue...", lf.GetName())
+				} else {
+					log.Errorf("LRIT file has CRC mismatch! Dropping...")
+					return
+				}
 			}
 		}
-	}
 
-	*l.LRITOutput <- &lf
+		if err := l.DecompressIfNeeded(lf); err != nil {
+			log.Errorf("LRIT file contains ZIP archive, but failed to decompress: %s", err.Error())
+			return
+		}
+
+		*l.LRITOutput <- lf
+	} else {
+		log.Error(err)
+	}
+}
+
+func (l *LRITGen) DecompressIfNeeded(lf *lrit.File) error {
+	if lf.ContainsZipArchive() {
+		return lf.Unzip()
+	}
+	return nil
 }
 
 // Boilerplate to satisfy interface

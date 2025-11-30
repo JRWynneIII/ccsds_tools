@@ -3,7 +3,6 @@ package lrit
 import (
 	"archive/zip"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,11 +20,10 @@ type File struct {
 	PrimaryHeader    PrimaryHeader
 	SecondaryHeaders []SecondaryHeader
 	Data             []byte
-	//HaveCRC          uint16
-	//WantCRC          uint16
-	CRCGood bool
-	RawData []byte
-	VCID    uint8
+	CRCGood          bool
+	RawData          []byte
+	VCID             uint8
+	UnzippedData     map[string][]byte
 }
 
 type PrimaryHeader struct {
@@ -50,6 +48,7 @@ const (
 	NOAASpecificHeaderType                              = 129
 	HeaderStructureRecordHeaderType                     = 130
 	RiceCompressionHeaderType                           = 131
+	DCSFilenameHeaderType                               = 132
 )
 
 type SecondaryHeader interface {
@@ -141,6 +140,12 @@ type RiceCompressionHeader struct {
 	ScanlinesPerPacket uint8
 }
 
+type DCSFilenameHeader struct {
+	Type     uint8
+	Length   uint16
+	Filename string
+}
+
 func NewExistingFile(path string) (*File, error) {
 	if data, err := os.ReadFile(path); err == nil {
 		ph := MakePrimaryHeader(data)
@@ -160,16 +165,68 @@ func NewExistingFile(path string) (*File, error) {
 	}
 }
 
-var filecounter map[string]int = make(map[string]int)
+func NewTempLRITFile(data []byte) (*File, error) {
+	return NewLRITFile(0, 0, data, true, 0)
+}
+
+func NewLRITFile(version uint8, vcduversion uint8, data []byte, crcgood bool, vcid uint8) (*File, error) {
+	f := File{
+		Version:     version,
+		VCDUVersion: vcduversion,
+		Data:        data,
+		CRCGood:     crcgood,
+		RawData:     data,
+		VCID:        vcid,
+	}
+	f.PrimaryHeader = MakePrimaryHeader(data)
+	if f.PrimaryHeader == (PrimaryHeader{}) {
+		return nil, fmt.Errorf("Not enough data for primary header; can't make LRIT file!")
+	}
+	f.Data = f.Data[16:]
+
+	if !f.PrimaryHeader.IsValid() {
+		return nil, fmt.Errorf("Invalid LRIT primary header detected; can't make LRIT file! %##v", f.PrimaryHeader)
+	}
+
+	if err := f.PopulateSecondaryHeaders(); err != nil {
+		return nil, err
+	}
+
+	return &f, nil
+}
 
 func (l File) WriteFile(dir string) {
-	path := filepath.Join(dir, l.GetName())
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		path = filepath.Join(dir, fmt.Sprintf("%s_%d_%d", l.GetName(), l.VCDUVersion, filecounter[l.GetName()]))
-		filecounter[l.GetName()] += 1
+	filenamefull := l.GetName()
+	productID := l.FindSecondaryHeader(NOAASpecificHeaderType).(NOAASpecificHeader).ProductID
+	if l.IsImageFile() && productID >= 16 && productID <= 19 {
+		tmp := l.FindSecondaryHeader(SegmentIdentificationHeaderType)
+		if tmp != nil {
+			sih := tmp.(SegmentIdentificationHeader)
+			filename := strings.TrimSuffix(filenamefull, ".lrit")
+			filenamefull = fmt.Sprintf("%s_%03d.lrit", filename, sih.SequenceNumber)
+		} else {
+			log.Errorf("Could not write LRIT image file %s; Could not find Segment ID Header", filenamefull)
+			return
+		}
 	}
-	if err := os.WriteFile(path, l.RawData, os.FileMode(0644)); err != nil {
-		log.Errorf("Could not write file %s", path)
+
+	if l.ContainsZipArchive() {
+		if err := l.Unzip(); err == nil {
+			for name, data := range l.UnzippedData {
+				path := filepath.Join(dir, name)
+				if err = os.WriteFile(path, data, os.FileMode(0644)); err != nil {
+					log.Errorf("Could not write unzipped file: %s from LRIT file %s", name, filenamefull)
+				}
+			}
+		} else {
+			log.Error(err)
+		}
+	} else {
+		path := filepath.Join(dir, filenamefull)
+
+		if err := os.WriteFile(path, l.RawData, os.FileMode(0644)); err != nil {
+			log.Errorf("Could not write file %s", path)
+		}
 	}
 }
 
@@ -185,7 +242,7 @@ func (l File) IsImageFile() bool {
 
 func (l File) ContainsZipArchive() bool {
 	nsh := l.FindSecondaryHeader(NOAASpecificHeaderType).(NOAASpecificHeader)
-	if l.PrimaryHeader.FileType != 0 && nsh.NOAASpecificCompression > 1 {
+	if l.PrimaryHeader.FileType != 0 && nsh.NOAASpecificCompression == 10 {
 		return true
 	}
 	return false
@@ -208,6 +265,27 @@ func (l File) UnzipToBuffer() (map[string][]byte, error) {
 	} else {
 		return ret, err
 	}
+}
+
+func (l *File) Unzip() error {
+	ret := make(map[string][]byte)
+	if zr, err := zip.NewReader(bytes.NewReader(l.Data), int64(len(l.Data))); err == nil {
+		for _, file := range zr.File {
+			if f, err := file.Open(); err == nil {
+				defer f.Close()
+				if ret[file.Name], err = io.ReadAll(f); err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+		l.UnzippedData = ret
+		return nil
+	} else {
+		return err
+	}
+
 }
 
 func (l File) GetName() string {
@@ -267,15 +345,6 @@ func (l *File) RiceDecompress() error {
 }
 
 func MakeImageStructureHeader(ph PrimaryHeader, data []byte) ImageStructureHeader {
-	//nextHeaderType := data[0]
-	//curidx := 0
-	//for uint32(curidx) < ph.AllHeaderLength {
-	//	if SecondaryHeaderType(nextHeaderType) == ImageStructureHeaderType {
-	//		break
-	//	}
-	//	headerlen := (uint16(data[curidx+1]) << 8) | uint16(data[curidx+2])
-	//	curidx += int(headerlen)
-	//}
 	curhtype := data[0]
 	for SecondaryHeaderType(curhtype) != ImageStructureHeaderType && len(data) >= 3 {
 		headerlen := (uint16(data[1]) << 8) | uint16(data[2])
@@ -303,18 +372,6 @@ func MakeImageStructureHeader(ph PrimaryHeader, data []byte) ImageStructureHeade
 }
 
 func MakeRiceCompressionHeader(ph PrimaryHeader, data []byte) RiceCompressionHeader {
-	//nextHeaderType := data[0]
-	//curidx := 0
-	//for uint32(curidx) < ph.AllHeaderLength {
-	//	if SecondaryHeaderType(nextHeaderType) == RiceCompressionHeaderType {
-	//		break
-	//	}
-	//	headerlen := (uint16(data[curidx+1]) << 8) | uint16(data[curidx+2])
-	//	curidx += int(headerlen)
-	//}
-
-	//htype := data[curidx]
-	//headerlen := (uint16(data[curidx+1]) << 8) | uint16(data[curidx+2])
 	curhtype := data[0]
 	for SecondaryHeaderType(curhtype) != RiceCompressionHeaderType && len(data) >= 3 {
 		headerlen := (uint16(data[1]) << 8) | uint16(data[2])
@@ -341,6 +398,9 @@ func MakeRiceCompressionHeader(ph PrimaryHeader, data []byte) RiceCompressionHea
 }
 
 func (l File) getNextHeader() (SecondaryHeader, error) {
+	if len(l.Data) < 3 {
+		return nil, fmt.Errorf("Packet too short! Could not make secondary header...")
+	}
 	htype := l.Data[0]
 	headerlen := (uint16(l.Data[1]) << 8) | uint16(l.Data[2])
 	switch SecondaryHeaderType(htype) {
@@ -431,12 +491,21 @@ func (l File) getNextHeader() (SecondaryHeader, error) {
 			PixelsPerBlock:     l.Data[5],
 			ScanlinesPerPacket: l.Data[6],
 		}, nil
+	case DCSFilenameHeaderType:
+		return DCSFilenameHeader{
+			Type:     htype,
+			Length:   headerlen,
+			Filename: string(l.Data[3:headerlen]),
+		}, nil
 	default:
 		return nil, fmt.Errorf("Invalid file type found in header! (type = %d)", l.PrimaryHeader.FileType)
 	}
 }
 
 func (l *File) PopulateSecondaryHeaders() error {
+	if uint32(len(l.Data))-l.PrimaryHeader.AllHeaderLength <= uint32(0) {
+		return fmt.Errorf("Not enough data to process all headers!")
+	}
 	headerlen := int(l.PrimaryHeader.AllHeaderLength) - int(l.PrimaryHeader.Length)
 	for headerlen > 0 {
 		if sh, err := l.getNextHeader(); err == nil {
@@ -475,6 +544,10 @@ func (f File) IsValid() (bool, error) {
 }
 
 func MakePrimaryHeader(data []byte) PrimaryHeader {
+	if len(data) < 16 {
+		log.Error("Could not make primary header!")
+		return PrimaryHeader{}
+	}
 	return PrimaryHeader{
 		Type:            data[0],
 		Length:          (uint16(data[1]) << 8) | uint16(data[2]),
@@ -528,6 +601,10 @@ func (h RiceCompressionHeader) HeaderType() SecondaryHeaderType {
 	return RiceCompressionHeaderType
 }
 
+func (h DCSFilenameHeader) HeaderType() SecondaryHeaderType {
+	return RiceCompressionHeaderType
+}
+
 func (h ImageStructureHeader) HeaderLength() uint16 {
 	return h.Length
 }
@@ -569,5 +646,9 @@ func (h HeaderStructureRecordHeader) HeaderLength() uint16 {
 }
 
 func (h RiceCompressionHeader) HeaderLength() uint16 {
+	return h.Length
+}
+
+func (h DCSFilenameHeader) HeaderLength() uint16 {
 	return h.Length
 }

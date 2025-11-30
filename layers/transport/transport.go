@@ -84,7 +84,6 @@ func (t *TransportLayer) InsertIncompletePacket(vcid uint8, packet *packets.MSDU
 	t.IncompletePackets[vcid][packet.Header.APID] = append(t.IncompletePackets[vcid][packet.Header.APID], packet)
 }
 
-// TODO: Clean this up
 func SDUNeedsDecompress(data []byte) (bool, int, lrit.RiceCompressionHeader, lrit.ImageStructureHeader) {
 	needsDecompress := false
 	endOfHeaders := 0
@@ -92,24 +91,18 @@ func SDUNeedsDecompress(data []byte) (bool, int, lrit.RiceCompressionHeader, lri
 	rch := lrit.RiceCompressionHeader{}
 	if len(data) >= (16 + 10) {
 		data = data[10:]
-		ph := lrit.MakePrimaryHeader(data)
-		if ph.Length <= uint16(len(data)) {
-			data = data[ph.Length:]
-			endOfHeaders = int(ph.AllHeaderLength)
-			//Is an image file
-			if ph.FileType == 0 {
-				lf := lrit.File{Data: data, PrimaryHeader: ph}
-				lf.PopulateSecondaryHeaders()
-
-				tmpish := lf.FindSecondaryHeader(lrit.ImageStructureHeaderType)
-				if tmpish != nil {
-					ish = tmpish.(lrit.ImageStructureHeader)
+		if lf, err := lrit.NewLRITFile(0, 0, data, true, 0); err == nil {
+			endOfHeaders = int(lf.PrimaryHeader.AllHeaderLength) + 10
+			if lf.IsImageFile() {
+				if tmp := lf.FindSecondaryHeader(lrit.ImageStructureHeaderType); tmp != nil {
+					ish = tmp.(lrit.ImageStructureHeader)
 				}
-				if ish != (lrit.ImageStructureHeader{}) {
-					tmprch := lf.FindSecondaryHeader(lrit.RiceCompressionHeaderType)
-					if tmprch != nil {
-						rch = tmprch.(lrit.RiceCompressionHeader)
-					}
+
+				if tmp := lf.FindSecondaryHeader(lrit.RiceCompressionHeaderType); tmp != nil {
+					rch = tmp.(lrit.RiceCompressionHeader)
+				}
+
+				if ish != (lrit.ImageStructureHeader{}) && rch != (lrit.RiceCompressionHeader{}) {
 					if ish.IsCompressed == 1 {
 						needsDecompress = true
 					}
@@ -119,6 +112,52 @@ func SDUNeedsDecompress(data []byte) (bool, int, lrit.RiceCompressionHeader, lri
 	}
 	return needsDecompress, endOfHeaders, rch, ish
 }
+
+func DecompressSDUBuffer(data []byte, rch lrit.RiceCompressionHeader, ish lrit.ImageStructureHeader) ([]byte, error) {
+	var ret []byte
+	if decompressed, err := lrit.RiceDecompressBuffer(data, rch, ish); err == nil {
+		ret = append(ret, decompressed...)
+	} else {
+		return ret, fmt.Errorf("Decompression failed with %s", err.Error())
+	}
+	return ret, nil
+}
+
+// TODO: Clean this up
+//func SDUNeedsDecompress(data []byte) (bool, int, lrit.RiceCompressionHeader, lrit.ImageStructureHeader) {
+//	needsDecompress := false
+//	endOfHeaders := 0
+//	ish := lrit.ImageStructureHeader{}
+//	rch := lrit.RiceCompressionHeader{}
+//	if len(data) >= (16 + 10) {
+//		data = data[10:]
+//		ph := lrit.MakePrimaryHeader(data)
+//		if ph.Length <= uint16(len(data)) {
+//			data = data[ph.Length:]
+//			endOfHeaders = int(ph.AllHeaderLength)
+//			//Is an image file
+//			if ph.FileType == 0 {
+//				lf := lrit.File{Data: data, PrimaryHeader: ph}
+//				lf.PopulateSecondaryHeaders()
+//
+//				tmpish := lf.FindSecondaryHeader(lrit.ImageStructureHeaderType)
+//				if tmpish != nil {
+//					ish = tmpish.(lrit.ImageStructureHeader)
+//				}
+//				if ish != (lrit.ImageStructureHeader{}) {
+//					tmprch := lf.FindSecondaryHeader(lrit.RiceCompressionHeaderType)
+//					if tmprch != nil {
+//						rch = tmprch.(lrit.RiceCompressionHeader)
+//					}
+//					if ish.IsCompressed == 1 {
+//						needsDecompress = true
+//					}
+//				}
+//			}
+//		}
+//	}
+//	return needsDecompress, endOfHeaders, rch, ish
+//}
 
 func SDUIsImage(data []byte) bool {
 	data = data[10:]
@@ -159,28 +198,55 @@ func DecompressSDU(data []byte, packetidx int, numPacketsInFile int, endOfHeader
 func GetImageStructureHeaderForSDU(data []byte) (lrit.ImageStructureHeader, error) {
 	//Skip the transport header
 	data = data[10:]
-	ph := lrit.MakePrimaryHeader(data)
-	if ph.Length > uint16(len(data)) {
-		return lrit.ImageStructureHeader{}, fmt.Errorf("Not enough data to find LRIT headers!")
+	if lf, err := lrit.NewLRITFile(0, 0, data, true, 0); err == nil {
+		tmpish := lf.FindSecondaryHeader(lrit.ImageStructureHeaderType)
+		if tmpish == nil {
+			return lrit.ImageStructureHeader{}, fmt.Errorf("Could not find ImageStructureHeader!")
+		}
+		return tmpish.(lrit.ImageStructureHeader), nil
+	} else {
+		return lrit.ImageStructureHeader{}, err
 	}
-	lf := lrit.File{
-		PrimaryHeader: ph,
-		Data:          data[ph.Length:],
-	}
-
-	lf.PopulateSecondaryHeaders()
-
-	tmpish := lf.FindSecondaryHeader(lrit.ImageStructureHeaderType)
-	if tmpish == nil {
-		return lrit.ImageStructureHeader{}, fmt.Errorf("Could not find ImageStructureHeader!")
-	}
-	return tmpish.(lrit.ImageStructureHeader), nil
 }
 
 func GetFillSDUs(data []byte, missingSDUs uint) ([]byte, error) {
 	var ret []byte
+	//TODO: Fix this; for some reason its not filling in all the lines that we should be able to...
+	//if lf, err := lrit.NewLRITFile(0, 0, data, true, 0); err == nil {
+	//	if lf.IsImageFile() {
+	//		if ish := lf.FindSecondaryHeader(lrit.ImageStructureHeaderType); ish != nil {
+	//			for i := uint(0); i < missingSDUs; i++ {
+	//				if len(data)-int(lf.PrimaryHeader.AllHeaderLength) == 0 {
+	//					fill := make([]byte, ish.(lrit.ImageStructureHeader).NumCols)
+	//					ret = append(ret, fill...)
+	//				} else {
+	//					tmp := data[len(data)-int(ish.(lrit.ImageStructureHeader).NumCols):]
+	//					if len(tmp) != int(ish.(lrit.ImageStructureHeader).NumCols) {
+	//						log.Errorf("Fill SDU size mismatch! Have: %d Want: %d", len(tmp), ish.(lrit.ImageStructureHeader).NumCols)
+	//					}
+	//					ret = append(ret, tmp...)
+	//				}
+
+	//			}
+	//			return ret, nil
+	//		} else {
+	//			log.Error("Not filling image; no ISH")
+	//			return ret, fmt.Errorf("Could not find Image Structure Header: %s", err.Error())
+	//		}
+	//	} else {
+	//		log.Error("Not am image; not filling")
+	//		return ret, fmt.Errorf("Missing SDU is not an image; Not filling...")
+	//	}
+	//} else {
+	//	return ret, err
+	//}
+
+	//	ret = []byte{}
+
+	//If we can't make an LRIT file (meaning we don't have enough data for all the headers yet
+	//Just fill with null bytes (black line)
+
 	if SDUIsImage(data) {
-		log.Infof("Adding fill data to packet...")
 		if ish, err := GetImageStructureHeaderForSDU(data); err == nil {
 			for i := uint(0); i < missingSDUs; i++ {
 				fill := make([]byte, ish.NumCols)
@@ -192,6 +258,7 @@ func GetFillSDUs(data []byte, missingSDUs uint) ([]byte, error) {
 	} else {
 		return ret, fmt.Errorf("Missing SDU is not an image! Can not fill...")
 	}
+
 	return ret, nil
 }
 
@@ -204,31 +271,79 @@ func (l *TransportLayer) CreateTransportFile(sdus []*packets.MSDU) *packets.Tran
 		return sdus[a].Header.PacketSequenceCounter < sdus[b].Header.PacketSequenceCounter
 	})
 
+	var needsDecompress bool
+	var caughtUp bool
+	var endOfHeaders int
+	var rch lrit.RiceCompressionHeader
+	var ish lrit.ImageStructureHeader
 	for idx, sdu := range sdus {
 		if idx > 0 {
 			if diff := packets.CounterDiff(16384, uint32(sdus[idx-1].Header.PacketSequenceCounter), uint32(sdu.Header.PacketSequenceCounter)) - 1; diff > 0 {
-				log.Errorf("Missing SDU! Last packet: %d, current packet: %d", sdus[idx-1].Header.PacketSequenceCounter, sdu.Header.PacketSequenceCounter)
+				log.Debugf("Missing SDU! Last packet: %d, current packet: %d", sdus[idx-1].Header.PacketSequenceCounter, sdu.Header.PacketSequenceCounter)
 				//TODO: Ensure this works!
-				if fill, err := GetFillSDUs(data, diff); err == nil && l.FillMissingSDUWithNull {
-					// Add null bytes when missing chunk
-					data = append(data, fill...)
+				if ish != (lrit.ImageStructureHeader{}) {
+					for i := uint(0); i < diff; i++ {
+						data = append(data, make([]byte, ish.NumCols)...)
+					}
 				} else {
-					log.Error(err)
+					//	if fill, err := GetFillSDUs(data, diff); err == nil && l.FillMissingSDUWithNull {
+					//		// Add null bytes when missing chunk
+					//		data = append(data, fill...)
+					//	} else {
+					log.Debug("nah")
+					//	}
 				}
 			}
 		}
 
 		// Check if we have a compressed image packet
-		needsDecompress, endOfHeaders, rch, ish := SDUNeedsDecompress(data)
+		//TODO: SOomehow this works. I have no idea how or why.
+		//	Its possible we're still dropping packets or not decompressing data when we should be,
+		//	but this at least semi works.
+		//	Next step: figure out what we need to do to concat the lrit files into a single image?
+		//	Does it need to combine LRIT files? Or do it at the presentation layer?
+		if ish == (lrit.ImageStructureHeader{}) && rch == (lrit.RiceCompressionHeader{}) {
+			needsDecompress, endOfHeaders, rch, ish = SDUNeedsDecompress(data)
+		}
 
 		// If we have a compressed image packet, decompress each SDU *after* the headers and before the CRC!
+		alreadyDecompressedSDU := false
 		if needsDecompress {
-			decompresseddata, err := DecompressSDU(data, idx, len(sdus), endOfHeaders, rch, ish)
-			if err != nil {
-				//If decompression fails, just bail and append the compressed data
-				data = append(data, sdu.Data...)
-			} else {
-				data = append(data, decompresseddata...)
+			if !caughtUp {
+				if endOfHeaders < len(data) {
+					if d, err := lrit.RiceDecompressBuffer(data[endOfHeaders:], rch, ish); err == nil {
+						data = data[:endOfHeaders]
+						data = append(data, d...)
+					} else {
+						//If decompression fails, just insert black lines
+						//postHeaderLen := len(data[endOfHeaders:])
+						data = data[:endOfHeaders]
+						data = append(data, make([]byte, ish.NumCols)...)
+					}
+				} else if endOfHeaders > len(data) {
+					alreadyDecompressedSDU = true
+					buf := append(data, sdu.Data...)
+					if d, err := lrit.RiceDecompressBuffer(buf[endOfHeaders:], rch, ish); err == nil {
+						data = buf[:endOfHeaders]
+						data = append(data, d...)
+					} else {
+						//If decompression fails, just insert black lines
+						log.Errorf("RICE decompress failed: %s", err.Error())
+						//postHeaderLen := len(buf[endOfHeaders:])
+						data = buf[:endOfHeaders]
+						data = append(data, make([]byte, ish.NumCols)...)
+					}
+				}
+				caughtUp = true
+			}
+			if !alreadyDecompressedSDU {
+				if d, err := lrit.RiceDecompressBuffer(sdu.Data, rch, ish); err == nil {
+					data = append(data, d...)
+				} else {
+					//If decompression fails, just insert black lines
+					log.Errorf("RICE decompress failed: %s", err.Error())
+					data = append(data, make([]byte, ish.NumCols)...)
+				}
 			}
 		} else {
 			data = append(data, sdu.Data...)
@@ -264,7 +379,7 @@ func (t *TransportLayer) ProcessVCDU(vcdu *packets.VCDU) {
 	} else {
 		if !vcdu.IsCorrupt {
 			for _, sdu := range sdus {
-				if sdu.Header.APID == 2047 {
+				if sdu.Header.APID == 2047 || len(sdu.Data) <= 2 {
 					//Drop fill packets
 					continue
 				}
@@ -275,9 +390,10 @@ func (t *TransportLayer) ProcessVCDU(vcdu *packets.VCDU) {
 
 				calcCRC := packets.CalcCRCBuffer(sdu.Data)
 				if calcCRC != CRC {
-					log.Errorf("<TRANSPORT> Detected CRC mismatch in SDU for packet. Have: %d, want: %d", calcCRC, CRC)
+					log.Debugf("<TRANSPORT> Detected CRC mismatch in SDU for packet. Have: %d, want: %d", calcCRC, CRC)
 					if !t.ContinueOnCRCFailure {
 						//If we don't have a valid CRC, drop this SDU
+						//This affects ALL SDU's! So when we check for Image CRC's and want to let them through, we can't. Also this now makes me question WHY we get garbage sometimes....
 						continue
 					}
 				}
@@ -294,7 +410,7 @@ func (t *TransportLayer) ProcessVCDU(vcdu *packets.VCDU) {
 					t.InsertIncompletePacket(vcdu.VCID, &sdu)
 				case 1:
 					//Start new packet
-					//t.ClearIncompletePacketBuffer(vcdu.VCID, sdu.Header.APID)
+					t.ClearIncompletePacketBuffer(vcdu.VCID, sdu.Header.APID)
 					t.InsertIncompletePacket(vcdu.VCID, &sdu)
 				case 2:
 					//End packet
