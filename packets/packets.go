@@ -47,7 +47,7 @@ type TransportFile struct {
 type MSDUHeader struct {
 	Version               uint8
 	Type                  bool
-	SecondaryHeaderFlag   bool
+	SecondaryHeaderFlag   bool //This does not seem to refer to the LRIT secondary headers
 	APID                  uint16
 	SequenceFlag          uint8
 	PacketSequenceCounter uint16
@@ -64,6 +64,7 @@ type MSDU struct {
 	VCID        uint8
 	VCDUCounter uint32
 	VCDUReplay  bool
+	CRCGood     bool
 }
 
 // Derived from GOESTools
