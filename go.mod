@@ -1,6 +1,6 @@
 module github.com/jrwynneiii/ccsds_tools
 
-go 1.24.9
+go 1.24.11
 
 require (
 	github.com/charmbracelet/log v0.4.2
